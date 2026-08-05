@@ -1,0 +1,14 @@
+cff-version: 1.2.0
+message: "If you use this model or software, please cite it as below."
+authors:
+  - family-names: "Jain"
+    given-names: "Soham"
+  - family-names: "Singh"
+    given-names: "Harsh"
+  - family-names: "Dewan"
+    given-names: "Divija"
+  - family-names: "Dev"
+    given-names: "Atul"
+title: "XpertGPT: Multi-Scale Sparse Expert Routing for Data-Constrained Language Modeling"
+year: 2026
+url: "https://github.com/sohamjain5035/XpertGPT"

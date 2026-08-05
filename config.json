@@ -1,0 +1,20 @@
+{
+  "auto_map": {
+    "AutoConfig": "configuration_xpertgpt.XpertGPTConfig",
+    "AutoModel": "modeling_xpertgpt.XpertGPTModelWrapper",
+    "AutoModelForCausalLM": "modeling_xpertgpt.XpertGPTForCausalLM"
+  },
+  "vocab_size": 16384,
+  "block_size": 512,
+  "d_model": 256,
+  "hidden_size": 256,
+  "d_thin": 384,
+  "num_layers": 6,
+  "num_blocks": 4,
+  "capacity_factor": 2.0,
+  "dropout": 0.1,
+  "model_type": "xpertgpt",
+  "architectures": [
+    "XpertGPTForCausalLM"
+  ]
+}
