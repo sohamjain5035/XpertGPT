@@ -11,7 +11,7 @@ This model is trained and evaluated on the **BabyLM 2026 Strict-Small** corpus (
 Unlike conventional dense Transformers that activate all parameters uniformly and enforce a single receptive field, **XpertGPT** matches linguistic scale variations by pairing a dense global stream with parallel sparse experts operating at distinct contextual resolutions.
 
 ### Key Architecture Components
-*   **Global Dense Block**: A pre-LayerNorm multi-head attention block ($d_{\text{model}}=256, h=4$) with full-sequence causal context utilizing Rotary Position Embeddings (RoPE).
+*   **Global Block**: A pre-LayerNorm multi-head attention block ($d_{\text{model}}=256, h=4$) with full-sequence causal context utilizing Rotary Position Embeddings (RoPE).
 *   **Multi-Scale Information Transmission (MSIT) Experts**: Four parallel expert branches operating at $d_{\text{thin}}=384$ over sliding-window attention spans:
     $$\text{Window Sizes } [w_1, w_2, w_3, w_4] = [64, 16, 8, 4] \text{ tokens}$$
 *   **Expert-Choice Routing**: A load-balanced routing mechanism (capacity factor $c=2.0$) where experts select their Top-$k$ tokens. Balanced expert utilization is guaranteed by construction without requiring any auxiliary load-balancing losses.
