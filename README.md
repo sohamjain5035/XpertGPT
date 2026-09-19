@@ -51,13 +51,13 @@ import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
 model = AutoModelForCausalLM.from_pretrained(
-    "SRJ5035/sw_glu_sw_64_16_8_4_xpert_gpt",
+    "anonym5035/swi_glu_sw_64_16_8_4_xpert_gpt",
     revision="main",
     trust_remote_code=True
 ).eval()
 
 tokenizer = AutoTokenizer.from_pretrained(
-    "SRJ5035/sw_glu_sw_64_16_8_4_xpert_gpt",
+    "anonym5035/swi_glu_sw_64_16_8_4_xpert_gpt",
     revision="main"
 )
 
@@ -72,7 +72,7 @@ print(f"Logits shape: {logits.shape}") # (1, sequence_length, 16384)
 If you wish to analyze the model during training phases, you can load intermediate milestones by changing the revision hash:
 ```python
 model_5m = AutoModelForCausalLM.from_pretrained(
-    "SRJ5035/sw_glu_sw_64_16_8_4_xpert_gpt",
+    "anonym5035/swi_glu_sw_64_16_8_4_xpert_gpt",
     revision="chck_5M",
     trust_remote_code=True
 ).eval()
