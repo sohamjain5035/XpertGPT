@@ -1,119 +1,117 @@
-# XpertGPT: Multi-Scale Sparse Expert Routing for Data-Constrained Language Modeling
+﻿# XpertGPT: Multi-Scale Sparse Expert Routing for Data-Constrained Language Modeling
 
-Official implementation of **XpertGPT**, a sparse decoder-only Transformer designed for sample-efficient language modeling under developmentally plausible, human-scale data constraints.
+<p align="center">
+  <img src="https://img.shields.io/badge/Task-BabyLM%202026-blue.svg">
+  <img src="https://img.shields.io/badge/Parameters-52.6M-green.svg">
+  <img src="https://img.shields.io/badge/License-MIT-yellow.svg">
+</p>
 
-This model is trained and evaluated on the **BabyLM 2026 Strict-Small** corpus (approx. 10 million words), outperforming the official dense GPT-2 baseline across multiple zero-shot and fine-tuned benchmarks.
+This repository contains the official PyTorch implementation and pretrained models for **XpertGPT**, a sparse decoder-only Transformer designed for data-constrained language modeling, accepted at the **BabyLM Challenge 2026 (Strict-Small Track)**.
 
----
-
-## 📖 Model Overview
-
-Unlike conventional dense Transformers that activate all parameters uniformly and enforce a single receptive field, **XpertGPT** matches linguistic scale variations by pairing a dense global stream with parallel sparse experts operating at distinct contextual resolutions.
-
-### Key Architecture Components
-*   **Global Block**: A pre-LayerNorm multi-head attention block ($d_{\text{model}}=256, h=4$) with full-sequence causal context utilizing Rotary Position Embeddings (RoPE).
-*   **Multi-Scale Information Transmission (MSIT) Experts**: Four parallel expert branches operating at $d_{\text{xpert}}=384$ over sliding-window attention spans:
-    $$\text{Window Sizes } [w_1, w_2, w_3, w_4] = [64, 16, 8, 4] \text{ tokens}$$
-*   **Expert-Choice Routing**: A load-balanced routing mechanism (capacity factor $c=2.0$) where experts select their Top-$k$ tokens. Balanced expert utilization is guaranteed by construction without requiring any auxiliary load-balancing losses.
-*   **SwiGLU Activations**: Leveraged across all Feed-Forward Networks (FFN) to optimize convergence and representational capacity:
-    $$\text{FFN}_{\text{SwiGLU}}(x) = \left(\text{SiLU}(W_1x) \otimes W_2x\right) W_3$$
+📄 **[Read the Paper](./XpertGPT_Paper.pdf)**
 
 ---
 
-## 📊 Evaluation Results
+## 🌟 Overview
 
-Both models are evaluated on the official **BabyLM 2026 Strict-Small** benchmark split.
+Conventional dense Transformers waste capacity by activating every parameter uniformly across every token, enforcing a single fixed receptive field. Under data-constrained regimes like the BabyLM Strict-Small budget (10M words), parameter utilization must be highly efficient.
 
-### Zero-Shot NLP Benchmarks & Averages
-Evaluates causal log-likelihoods across syntax, grammatical acceptability, and world-knowledge tasks. Overall averages are reported at the top.
+**XpertGPT** solves this by routing tokens to specialized expert pathways operating at multiple contextual scales. 
 
-| Benchmark / Metric | GPT-2 Baseline | **XpertGPT (Seed 42)** | **XpertGPT (Mean ± σ)** |
-| :--- | :---: | :---: | :---: |
-| **Overall Average** | 37.38 | **38.42** | - |
-| **NLP Average** | 48.99 | **49.04** | - |
-| **BLiMP** | **65.23** | 64.66 | 63.80 ± 0.76 |
-| **BLiMP Supp** | 57.25 | **61.00** | 59.51 ± 1.14 |
-| **EWoK** | 50.63 | **51.34** | 50.91 ± 1.27 |
-| **Entity Tracking** | 19.10 | **21.08** | 20.02 ± 0.76 |
-| **COMPS** | **51.81** | 49.62 | 50.23 ± 0.50 |
-| **GlobalPIQA** | **35.09** | 32.65 | 33.03 ± 1.46 |
+### Key Architectural Features:
+1. **Global Attention Block**: A dense stream that preserves full-sequence contextual information and tracks long-range dependencies.
+2. **Sparse Multi-Scale Expert Stage**: Four parallel sparse expert branches that operate over different sliding-window attention spans (64, 16, 8, and 4 tokens).
+3. **Expert-Choice Routing**: Guarantees perfectly balanced expert utilization *without* auxiliary load-balancing losses by having each expert select its top-k most relevant tokens independently across the sequence.
+4. **RoPE & SwiGLU**: Applies Rotary Position Embeddings and SwiGLU gated feed-forward networks throughout both the dense and sparse pathways to maximize representational capacity.
 
-### Fine-Tuned SuperGLUE Classification
-Evaluates fine-tuning accuracy across the seven SuperGLUE benchmarks.
+XpertGPT achieves an overall average of **38.42**, outperforming the official dense GPT-2 (98.4M) baseline (37.38) while activating only a fraction of the parameters per token (~32M active parameters).
 
-| Benchmark | GPT-2 Baseline (98.4M) | **XpertGPT (52.6M)** |
-| :--- | :---: | :---: |
-| BoolQ | **67.71** | 64.59 |
-| MNLI | **49.84** | 48.55 |
-| MRPC | 81.37 | **82.74** |
-| MultiRC | **65.76** | 57.55 |
-| QQP | 61.67 | **62.30** |
-| RTE | 56.83 | **57.55** |
-| WSC | 63.46 | **67.31** |
+## 🚀 Quick Start
 
-### Computational and Step Efficiency
-Through Expert-Choice routing ($c=2.0$, $E=4$), each token activates exactly $2$ expert pathways, leading to **67.3% fewer active parameters** per forward pass.
+### Installation
 
-| Efficiency Metric | GPT-2 Baseline | **XpertGPT** | **Saving (%)** |
-| :--- | :---: | :---: | :---: |
-| **Total Parameters** | 98.40M | 52.64M | -46.5% |
-| **Active Parameters / Token** | 98.40M | 32.14M | **-67.3%** |
-| **Forward Pass FLOPs (T=512)** | 1.01 GFLOPs | 0.33 GFLOPs | **-67.3%** |
-| **Pretraining FLOPs (D=10M)** | 6.06 TFLOPs | 1.98 TFLOPs | **-67.3%** |
-| **Training Throughput** | - | **98,937 tokens/s** | - |
+Clone the repository and ensure you have `transformers` and `torch` installed.
 
----
+```bash
+git clone https://github.com/sohamjain5035/XpertGPT.git
+cd XpertGPT
+pip install torch transformers
+```
 
-## ⚙️ Hyperparameter Configuration
+### Usage with Hugging Face `transformers`
 
-The complete structural and optimizer hyperparameters used for pretraining on the 10M word Strict-Small corpus are listed below.
-
-| Parameter | Value | Parameter | Value |
-| :--- | :--- | :--- | :--- |
-| **Layers ($L$)** | 6 | **Optimizer** | AdamW |
-| **Model Dim ($d_{\text{model}}$)** | 256 | **Optimizer $\beta_1, \beta_2$** | $0.9, 0.95$ |
-| **Expert Dim ($d_{\text{xpert}}$)** | 384 | **Learning Rate** | $3 \times 10^{-4}$ |
-| **Global Heads ($h_g$)** | 4 | **Weight Decay ($\lambda$)** | $0.1$ |
-| **Expert Heads ($h_e$)** | 6 | **Warmup Steps** | 800 |
-| **Active Experts ($E$)** | 4 | **Epochs** | 10 |
-| **Capacity Factor ($c$)** | 2.0 | **Batch Size ($B$)** | 16 |
-| **Window Sizes ($w$)** | `[64, 16, 8, 4]` | **Context Length ($T$)** | 512 |
-
----
-
-## 🚀 How to Load and Use Checkpoints
-
-Pretrained checkpoint weights can be loaded directly from Hugging Face using the Transformers library:
+XpertGPT is fully integrated with Hugging Face's `AutoModel` API through custom configuration classes. 
 
 ```python
 import torch
-from transformers import AutoModelForCausalLM, AutoTokenizer
+from transformers import AutoTokenizer
+from modeling_xpertgpt import XpertGPTForCausalLM
+from configuration_xpertgpt import XpertGPTConfig
 
-model_id = "SRJ5035/swi_glu_sw_64_16_8_4_xpert_gpt"
+# 1. Initialize tokenizer
+tokenizer = AutoTokenizer.from_pretrained("./") # Point to local directory with tokenizer files
 
-# Load Model
-model = AutoModelForCausalLM.from_pretrained(
-    model_id,
-    revision="main",
-    trust_remote_code=True
-).eval()
+# 2. Load model configuration (matches Strict-Small setup)
+config = XpertGPTConfig(
+    vocab_size=16384,
+    d_model=256,
+    d_thin=384,
+    num_layers=6,
+    num_blocks=4,
+    capacity_factor=2.0
+)
 
-# Load Tokenizer
-tokenizer = AutoTokenizer.from_pretrained(model_id, revision="main")
+# 3. Initialize model
+model = XpertGPTForCausalLM(config)
+
+# Forward pass example
+inputs = tokenizer("The cat sat on the", return_tensors="pt")
+outputs = model(**inputs)
+logits = outputs.logits
+print(f"Logits shape: {logits.shape}") # (1, 5, 16384)
 ```
 
----
+## 🧠 Architecture Configuration
 
-## 📝 Citation
+The default configuration for the 52.6M parameter model:
 
-If you use this model or code in your research, please cite:
+| Parameter | Value |
+| :--- | :--- |
+| Layers (L) | 6 |
+| Model dimension (d_model) | 256 |
+| Expert dimension (d_expert) | 384 |
+| Global attention heads | 4 |
+| Expert attention heads | 6 |
+| Total Experts (E) | 4 |
+| Expert Window Sizes | [64, 16, 8, 4] |
+| Capacity factor (c) | 2.0 |
+| Context length (T) | 512 |
+| Vocabulary size | 16,384 |
+
+## 📊 Results on BabyLM 2026 (Strict-Small)
+
+| Benchmark | GPT-2 Baseline (98.4M) | **XpertGPT (52.6M)** |
+| :--- | :---: | :---: |
+| **Overall Average** | 37.38 | **38.42** |
+| NLP Average | 48.99 | **49.04** |
+| BLiMP Supplement | 57.25 | **61.00** |
+| EWoK | 50.63 | **51.34** |
+| Entity Tracking | 19.10 | **21.08** |
+
+*Note: For the full breakdown of SuperGLUE fine-tuning tasks and zero-shot evaluations, please refer to the paper.*
+
+## 📖 Citation
+
+If you find this code or our paper useful in your research, please cite:
 
 ```bibtex
-@misc{jain2026xpertgpt,
-  title        = {XpertGPT: Multi-Scale Sparse Expert Routing for Data-Constrained Language Modeling},
-  author       = {Soham Jain and Harsh Singh and Divija Dewan and Atul Dev},
-  year         = {2026},
-  howpublished = {GitHub Repository},
-  note         = {Vision and Language Group, IIT Roorkee}
+@inproceedings{jain2026xpertgpt,
+  title={XpertGPT: Multi-Scale Sparse Expert Routing for Data-Constrained Language Modeling},
+  author={Jain, Soham and Singh, Harsh and Dewan, Divija and Dev, Atul},
+  booktitle={Proceedings of the BabyLM Challenge},
+  year={2026}
 }
 ```
+
+## 📄 License
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.

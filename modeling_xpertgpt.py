@@ -256,7 +256,6 @@ class MoEPMSITBlock(nn.Module):
 
     def forward(self, x_0: torch.Tensor, past_kvs=None, use_cache: bool = False, bidirectional: bool = False):
         B, T, D = x_0.size()
-        n_tokens = B * T
 
         # Step 1: Global Block
         pkv_g = past_kvs[0] if past_kvs else None
@@ -266,50 +265,56 @@ class MoEPMSITBlock(nn.Module):
         x_2 = x_1
 
         # Router scores
-        r_logits = self.w_router(self.router_ln(x_2)).view(n_tokens, self.num_blocks)
-        r_probs = F.softmax(r_logits, dim=-1)
+        r_logits = self.w_router(self.router_ln(x_2)) # (B, T, num_blocks)
+        r_probs = F.softmax(r_logits, dim=-1) # (B, T, num_blocks)
 
-        # Per-expert capacity: k = (n * c) / e
-        k_capacity = max(1, int(round(n_tokens * self.capacity_factor / self.num_blocks)))
-        k_capacity = min(k_capacity, n_tokens)
+        # Per-expert capacity: k = (T * c) / e (independently across each sequence)
+        k_capacity = max(1, int(round(T * self.capacity_factor / self.num_blocks)))
+        k_capacity = min(k_capacity, T)
 
-        # Expert Choice routing: topk over the token axis for each expert
-        expert_token_scores = r_probs.transpose(0, 1) # (num_blocks, n_tokens)
-        topk_scores, topk_token_idx = torch.topk(expert_token_scores, k_capacity, dim=-1)
+        # Expert Choice routing: topk over the sequence axis (T) for each expert
+        expert_token_scores = r_probs.transpose(1, 2) # (B, num_blocks, T)
+        topk_scores, topk_token_idx = torch.topk(expert_token_scores, k_capacity, dim=-1, sorted=False) # (B, num_blocks, k_capacity)
+        
+        # Sort indices to preserve causal order
+        topk_token_idx, sort_indices = torch.sort(topk_token_idx, dim=-1)
+        topk_scores = torch.gather(topk_scores, -1, sort_indices)
+        
         self.last_topk_indices = topk_token_idx
-
-        # Load balancing is guaranteed by construction in Expert Choice
-        layer_aux_loss = x_2.new_zeros(())
 
         # Shrink projection
         x_2_thin = self.w_down(x_2) # (B, T, d_thin)
-        x_2_thin_flat = x_2_thin.view(n_tokens, self.d_thin)
 
         # Expert computations
         new_kvs = [nkv_g]
-        expert_outputs_flat = torch.zeros(n_tokens, self.d_model, device=x_2.device, dtype=x_2.dtype)
+        expert_outputs = torch.zeros_like(x_2) # (B, T, d_model)
 
         for i, block in enumerate(self.thin_blocks):
-            sel_idx = topk_token_idx[i]
-            bucket_in = x_2_thin_flat[sel_idx].unsqueeze(0) # (1, k_capacity, d_thin)
-
+            sel_idx = topk_token_idx[:, i, :] # (B, k_capacity)
+            
+            # Gather bucket_in: (B, k_capacity, d_thin)
+            bucket_in = torch.gather(x_2_thin, 1, sel_idx.unsqueeze(-1).expand(-1, -1, self.d_thin))
+            
             pkv_i = past_kvs[i + 1] if past_kvs else None
             bucket_out, nkv_i = block(bucket_in, pkv_i, use_cache, bidirectional)
             if use_cache:
                 new_kvs.append(nkv_i)
+            
+            # Up project: (B, k_capacity, d_model)
+            bucket_out_full = self.w_up(bucket_out)
+            
+            # Apply gate: (B, k_capacity, 1)
+            gate = topk_scores[:, i, :].unsqueeze(-1)
+            bucket_out_gated = bucket_out_full * gate
+            
+            # Scatter add into expert_outputs: (B, T, d_model)
+            expert_outputs.scatter_add_(1, sel_idx.unsqueeze(-1).expand(-1, -1, self.d_model), bucket_out_gated)
 
-            bucket_out = bucket_out.squeeze(0) # (k_capacity, d_thin)
-            bucket_out_full = self.w_up(bucket_out) # (k_capacity, d_model)
-
-            gate = topk_scores[i].unsqueeze(-1) # (k_capacity, 1)
-            expert_outputs_flat.index_add_(0, sel_idx, bucket_out_full * gate)
-
-        x_3_full = expert_outputs_flat.view(B, T, self.d_model)
-        out = x_2 + x_3_full
+        out = x_2 + expert_outputs
         out = self.ln_post_moe(out)
 
         present_kvs = tuple(new_kvs) if use_cache else None
-        return out, present_kvs, layer_aux_loss
+        return out, present_kvs
 
 # ─────────────────────────────────────────────────────────────
 # 4.  RAW XpertGPT MODEL
@@ -336,20 +341,16 @@ class XpertGPTModel(nn.Module):
 
     def forward(self, input_ids: torch.Tensor, targets: torch.Tensor = None, bidirectional: bool = False):
         x = self.drop_emb(self.wte(input_ids))
-        total_aux_loss = 0.0
         
         for block in self.blocks:
-            x, _, layer_aux = block(x, past_kvs=None, use_cache=False, bidirectional=bidirectional)
-            total_aux_loss += layer_aux
+            x, _ = block(x, past_kvs=None, use_cache=False, bidirectional=bidirectional)
 
         x = self.ln_f(x)
         logits = self.lm_head(x)
 
         loss = None
         if targets is not None:
-            ce_loss = F.cross_entropy(logits.view(-1, self.cfg.vocab_size), targets.view(-1), ignore_index=-100)
-            avg_aux_loss = total_aux_loss / self.cfg.num_layers
-            loss = ce_loss + (0.01 * avg_aux_loss)
+            loss = F.cross_entropy(logits.view(-1, self.cfg.vocab_size), targets.view(-1), ignore_index=-100)
 
         return logits, loss
 
@@ -375,7 +376,7 @@ class XpertGPTModelWrapper(PreTrainedModel):
     def forward(self, input_ids, **kwargs):
         x = self.drop_emb(self.wte(input_ids))
         for block in self.blocks:
-            x, _, _ = block(x, past_kvs=None, use_cache=False, bidirectional=False)
+            x, _ = block(x, past_kvs=None, use_cache=False, bidirectional=False)
         x = self.ln_f(x)
         return BaseModelOutputWithPast(last_hidden_state=x)
 
