@@ -163,7 +163,7 @@ The default configuration for the 52.6M parameter model as used in the paper:
 
 ## 📖 Citation
 
-If you find this code or our paper useful in your research, please cite:
+If you find this code or our paper useful in your research,please cite:
 
 ```bibtex
 @inproceedings{jain2026xpertgpt,
